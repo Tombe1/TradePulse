@@ -2,15 +2,16 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>TradePulse Dashboard</title>
+    <title>TradePulse Pro Dashboard</title>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
         body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; padding: 40px; text-align: center; }
         h1 { color: #1a1a1a; margin-bottom: 30px; }
 
-        /* מיכל הכרטיסים - יסדר אותם בשורות יפות */
         #stock-container {
             display: flex;
             flex-wrap: wrap;
@@ -18,77 +19,70 @@
             gap: 20px;
         }
 
-        /* עיצוב הכרטיס */
         .card {
             background: white;
-            width: 220px;
+            width: 300px; /* הרחבנו קצת בשביל הגרף */
             padding: 20px;
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            transition: transform 0.2s;
             text-align: center;
+            position: relative;
         }
-        .card:hover { transform: translateY(-5px); }
 
         .symbol { font-size: 1.5em; font-weight: bold; color: #555; }
-        .company { font-size: 0.9em; color: #888; margin-bottom: 15px; height: 40px; } /* גובה קבוע לשמירת אחידות */
+        .company { font-size: 0.9em; color: #888; margin-bottom: 10px; }
 
         .price {
-            font-size: 2.2em;
+            font-size: 2.5em;
             font-weight: 800;
             color: #2c3e50;
-            transition: color 0.3s;
+            margin-bottom: 15px;
         }
 
-        /* אנימציות צבע לשינוי מחיר */
-        .updated-up { color: #27ae60 !important; animation: pop 0.3s; }
-        .updated-down { color: #e74c3c !important; animation: pop 0.3s; }
-
-        @keyframes pop {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
+        /* אזור הגרף */
+        .chart-container {
+            width: 100%;
+            height: 150px;
         }
+
+        /* אנימציות צבע */
+        .updated-up { color: #27ae60 !important; }
+        .updated-down { color: #e74c3c !important; }
     </style>
 </head>
 <body>
 
-<h1>🚀 TradePulse Live Market</h1>
-<div id="stock-container">
-</div>
+<h1>🚀 TradePulse Pro</h1>
+<div id="stock-container"></div>
 
 <script>
     var stompClient = null;
-    var previousPrices = {}; // זכרון מקומי לשמירת המחיר הקודם (כדי לדעת אם עלה או ירד)
+    var charts = {}; // שמירת המופעים של הגרפים כדי שנוכל לעדכן אותם
 
     function connect() {
         var socket = new SockJS('/ws');
         stompClient = Stomp.over(socket);
-        stompClient.debug = null; // משתיק את הלוגים ב-Console שלא יחפרו
+        stompClient.debug = null;
 
         stompClient.connect({}, function (frame) {
-            console.log('✅ Connected to WebSocket');
-
+            console.log('✅ Connected');
             stompClient.subscribe('/topic/prices', function (message) {
-                var asset = JSON.parse(message.body);
-                handleUpdate(asset);
+                handleUpdate(JSON.parse(message.body));
             });
         });
     }
 
     function handleUpdate(asset) {
-        // מזהה ייחודי לכרטיס (למשל card-PLTR)
         var cardId = "card-" + asset.symbol;
-        var card = document.getElementById(cardId);
 
-        // אם הכרטיס לא קיים - ניצור אותו
-        if (!card) {
+        // אם הכרטיס לא קיים - יוצרים אותו ומושכים היסטוריה
+        if (!document.getElementById(cardId)) {
             createCard(asset);
-            card = document.getElementById(cardId);
+            loadHistoryAndInitChart(asset);
+        } else {
+            // אם קיים - מעדכנים מחיר וגרף
+            updateCard(asset);
         }
-
-        // עדכון המחיר והאנימציה
-        updatePriceDisplay(card, asset);
     }
 
     function createCard(asset) {
@@ -97,40 +91,90 @@
             <div id="card-${asset.symbol}" class="card">
                 <div class="symbol">${asset.symbol}</div>
                 <div class="company">${asset.companyName}</div>
-                <div class="price" id="price-${asset.symbol}">---</div>
+                <div class="price" id="price-${asset.symbol}">$${asset.currentPrice}</div>
+                <div class="chart-container">
+                    <canvas id="chart-${asset.symbol}"></canvas>
+                </div>
             </div>
         `;
         container.insertAdjacentHTML('beforeend', html);
     }
 
-    function updatePriceDisplay(card, asset) {
-        var priceElement = card.querySelector(".price");
-        var newPrice = asset.currentPrice;
-        var oldPrice = previousPrices[asset.symbol];
+    // פונקציה ראשונית: מביאה היסטוריה מהשרת ומציירת גרף
+    function loadHistoryAndInitChart(asset) {
+        fetch(`/api/assets/${asset.symbol}/history`)
+            .then(response => response.json())
+            .then(historyData => {
+                // הכנת הנתונים לגרף
+                var labels = historyData.map(h => new Date(h.timestamp).toLocaleTimeString());
+                var prices = historyData.map(h => h.price);
 
-        // עדכון המספר
-        priceElement.innerText = "$" + newPrice;
-
-        // החלטה על צבע (ירוק אם עלה, אדום אם ירד)
-        priceElement.classList.remove("updated-up", "updated-down");
-
-        if (oldPrice && newPrice > oldPrice) {
-            priceElement.classList.add("updated-up");
-        } else if (oldPrice && newPrice < oldPrice) {
-            priceElement.classList.add("updated-down");
-        } else {
-             // עדכון ראשון או ללא שינוי - ניתן הבהוב נייטרלי
-             priceElement.classList.add("updated-up");
-        }
-
-        // שמירת המחיר לפעם הבאה
-        previousPrices[asset.symbol] = newPrice;
-
-        // ניקוי הקלאס אחרי שנייה כדי שהאנימציה תוכל לקרות שוב
-        setTimeout(() => priceElement.classList.remove("updated-up", "updated-down"), 1000);
+                initChart(asset.symbol, labels, prices);
+            });
     }
 
-    // התחברות בטעינה
+    function initChart(symbol, labels, dataPoints) {
+        var ctx = document.getElementById(`chart-${symbol}`).getContext('2d');
+
+        var chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Price',
+                    data: dataPoints,
+                    borderColor: '#3498db',
+                    borderWidth: 2,
+                    fill: true,
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    pointRadius: 0, // מסתיר נקודות כדי שיראה נקי
+                    tension: 0.4 // קו עגול ויפה
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } }, // הסתרת מקרא
+                scales: {
+                    x: { display: false }, // הסתרת ציר X
+                    y: { display: false }  // הסתרת ציר Y (מינימליסטי)
+                }
+            }
+        });
+
+        charts[symbol] = chart;
+    }
+
+    function updateCard(asset) {
+        // 1. עדכון הטקסט (המחיר בגדול)
+        var priceEl = document.getElementById(`price-${asset.symbol}`);
+        var oldPrice = parseFloat(priceEl.innerText.replace('$', ''));
+        priceEl.innerText = "$" + asset.currentPrice;
+
+        priceEl.classList.remove("updated-up", "updated-down");
+        if (asset.currentPrice > oldPrice) priceEl.classList.add("updated-up");
+        else if (asset.currentPrice < oldPrice) priceEl.classList.add("updated-down");
+        setTimeout(() => priceEl.classList.remove("updated-up", "updated-down"), 1000);
+
+        // 2. עדכון הגרף
+        var chart = charts[asset.symbol];
+        if (chart) {
+            var time = new Date().toLocaleTimeString();
+
+            // הוספת נתונים חדשים
+            chart.data.labels.push(time);
+            chart.data.datasets[0].data.push(asset.currentPrice);
+
+            // שמירה על גרף נקי - אם יש יותר מ-50 נקודות, נמחק את הישנות
+            if (chart.data.labels.length > 50) {
+                chart.data.labels.shift();
+                chart.data.datasets[0].data.shift();
+            }
+
+            chart.update();
+        }
+    }
+
     connect();
 </script>
 </body>

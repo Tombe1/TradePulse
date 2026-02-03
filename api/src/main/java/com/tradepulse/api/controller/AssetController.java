@@ -1,33 +1,40 @@
 package com.tradepulse.api.controller;
 
 import com.tradepulse.api.model.Asset;
+import com.tradepulse.api.model.PriceHistory;
 import com.tradepulse.api.repository.AssetRepository;
+import com.tradepulse.api.repository.PriceHistoryRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-@RestController // מגדיר שזהו רכיב שמחזיר תשובות JSON
-@RequestMapping("/api/assets") // כתובת הבסיס לכל הבקשות כאן
+@RestController
+@RequestMapping("/api/assets")
 public class AssetController {
 
-    private final AssetRepository repository;
+    private final AssetRepository assetRepository;
+    private final PriceHistoryRepository historyRepository; // <-- תוספת
 
-    // הזרקת תלות (Dependency Injection) דרך הבנאי
-    public AssetController(AssetRepository repository) {
-        this.repository = repository;
+    // עדכון הבנאי לקבלת ה-Repository החדש
+    public AssetController(AssetRepository assetRepository, PriceHistoryRepository historyRepository) {
+        this.assetRepository = assetRepository;
+        this.historyRepository = historyRepository;
     }
 
-    // פעולה 1: שליפת כל המניות
-    // GET http://localhost:8080/api/assets
     @GetMapping
     public List<Asset> getAllAssets() {
-        return repository.findAll();
+        return assetRepository.findAll();
     }
 
-    // פעולה 2: הוספת מניה חדשה (נשתמש בזה עוד מעט)
-    // POST http://localhost:8080/api/assets
     @PostMapping
     public Asset createAsset(@RequestBody Asset asset) {
-        return repository.save(asset);
+        return assetRepository.save(asset);
+    }
+
+    // --- הפונקציה החדשה לגרף ---
+    // GET http://localhost:8080/api/assets/PLTR/history
+    @GetMapping("/{symbol}/history")
+    public List<PriceHistory> getAssetHistory(@PathVariable String symbol) {
+        return historyRepository.findBySymbol(symbol);
     }
 }

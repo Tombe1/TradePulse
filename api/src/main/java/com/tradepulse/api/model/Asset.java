@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
 public class Asset {
 
     @Id // המפתח הראשי (Primary Key)
-    @Column(length = 10)
+    @Column(unique = true, length = 50)
     private String symbol; // למשל: "AAPL", "PLTR" - הסימול הוא ייחודי
 
     @Column(nullable = false)
