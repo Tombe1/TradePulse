@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: tradepulse-api
+
+  # הגדרות התחברות ל-Database
+  datasource:
+    # שים לב: אנחנו פונים לפורט 5433 כי זה מה שחשפנו ב-Docker החוצה
+    url: jdbc:postgresql://localhost:5433/tradepulse_db
+    username: admin
+    password: admin_password
+    driver-class-name: org.postgresql.Driver
+
+  # הגדרות JPA (איך ג'אווה מדברת עם הטבלאות)
+  jpa:
+    hibernate:
+      # בפיתוח: יוצר טבלאות אוטומטית אם חסרות. בייצור נשנה ל-validate
+      ddl-auto: update
+    show-sql: false # מציג את השאילתות בטרמינל (טוב לדיבאג)
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # הגדרות Redis
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+finnhub:
+  api:
+    key: "d60g0m9r01qto1rd0iv0d60g0m9r01qto1rd0ivg"
+    url: "https://finnhub.io/api/v1"
