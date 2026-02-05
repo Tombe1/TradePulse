@@ -1,37 +1,41 @@
 package com.tradepulse.api.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
+
 import java.util.HashSet;
 import java.util.Set;
 
 @Entity
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
-@Table(name = "app_users") // 'user' is a reserved word in SQL, so we use 'app_users'
+@AllArgsConstructor
+@Builder
+@EqualsAndHashCode(onlyExplicitlyIncluded = true) // חשוב! השוואה רק לפי ID
+@Table(name = "app_users")
 public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include // רק ה-ID קובע שוויון
     private Long id;
 
+    @Column(unique = true, nullable = false)
     private String username;
+
+    @Column(nullable = false)
+    private String password;
 
     private String email;
 
-    // הקשר המיוחד: משתמש אחד -> הרבה מניות
-    // Many-to-Many: כי אותה מניה (PLTR) יכולה להופיע אצל הרבה משתמשים
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(
-            name = "user_portfolio",
-            joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "asset_symbol")
-    )
-    private Set<Asset> portfolio = new HashSet<>();
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @ToString.Exclude // מונע לולאה אינסופית בהדפסה
+    private Set<PortfolioItem> portfolioItems = new HashSet<>();
 
-    public User(String username, String email) {
+    public User(String username, String email, String password) {
         this.username = username;
         this.email = email;
+        this.password = password;
     }
 }
