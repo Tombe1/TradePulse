@@ -33,9 +33,14 @@ public class Alert {
     private BigDecimal targetPrice;
 
     @Enumerated(EnumType.STRING)
-    private AlertCondition condition; // ABOVE or BELOW
+    private AlertCondition condition;
 
-    private boolean isTriggered = false; // האם ההתראה כבר נשלחה?
+    // השדה שלך נשאר כמו שהוא
+    private boolean isTriggered = false;
+
+    // --- התוספת היחידה שחייבים: זמן ההפעלה ---
+    private LocalDateTime triggeredAt;
+    // ------------------------------------------
 
     private LocalDateTime createdAt = LocalDateTime.now();
 

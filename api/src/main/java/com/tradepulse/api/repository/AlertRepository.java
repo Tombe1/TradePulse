@@ -6,9 +6,8 @@ import java.util.List;
 
 public interface AlertRepository extends JpaRepository<Alert, Long> {
 
-    // שליפת כל ההתראות הפעילות למניה מסוימת (למשל: כל מי שמחכה ל-PLTR)
+    // שינינו ל-IsTriggered כדי שיתאים לשדה isTriggered במודל שלך
     List<Alert> findBySymbolAndIsTriggeredFalse(String symbol);
 
-    // שליפת כל ההתראות של משתמש מסוים (כדי להציג לו רשימה באתר)
-    List<Alert> findByUserUsername(String username);
+    List<Alert> findByUserUsernameAndIsTriggeredFalse(String username);
 }

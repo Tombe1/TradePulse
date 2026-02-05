@@ -3,12 +3,11 @@ package com.tradepulse.api.controller;
 import com.tradepulse.api.model.User;
 import com.tradepulse.api.repository.UserRepository;
 import com.tradepulse.api.security.JwtUtils;
+import org.springframework.http.ResponseEntity; // יבוא חדש
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import java.util.Collections; // יבוא חדש
 import java.util.Map;
 
 @RestController
@@ -25,20 +24,18 @@ public class AuthController {
         this.jwtUtils = jwtUtils;
     }
 
-    // הרשמה: מקבל שם וסיסמה -> שומר ב-DB מוצפן
     @PostMapping("/register")
-    public String register(@RequestBody User user) {
+    public ResponseEntity<?> register(@RequestBody User user) { // שינוי ל-ResponseEntity
         if (userRepository.findByUsername(user.getUsername()).isPresent()) {
-            throw new RuntimeException("Username already exists");
+            return ResponseEntity.badRequest().body("Username already exists");
         }
-        user.setPassword(passwordEncoder.encode(user.getPassword())); // הצפנה!
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
         userRepository.save(user);
-        return "User registered successfully";
+        return ResponseEntity.ok(Collections.singletonMap("message", "User registered successfully"));
     }
 
-    // התחברות: מקבל שם וסיסמה -> מחזיר Token
     @PostMapping("/login")
-    public String login(@RequestBody Map<String, String> loginData) {
+    public ResponseEntity<?> login(@RequestBody Map<String, String> loginData) { // שינוי ל-ResponseEntity
         String username = loginData.get("username");
         String password = loginData.get("password");
 
@@ -46,10 +43,13 @@ public class AuthController {
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
         if (!passwordEncoder.matches(password, user.getPassword())) {
-            throw new RuntimeException("Invalid password");
+            return ResponseEntity.status(401).body("Invalid password");
         }
 
-        // יצירת טוקן
-        return jwtUtils.generateToken(username);
+        String token = jwtUtils.generateToken(username);
+
+        // --- השינוי החשוב ל-React ---
+        // מחזירים אובייקט JSON: { "token": "..." }
+        return ResponseEntity.ok(Collections.singletonMap("token", token));
     }
 }

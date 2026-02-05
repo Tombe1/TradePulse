@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +21,7 @@ public class AlertService {
 
     private final AlertRepository alertRepository;
     private final UserRepository userRepository;
-    private final SimpMessagingTemplate messagingTemplate; // הכלי לשליחת הודעות WS
+    private final SimpMessagingTemplate messagingTemplate;
 
     public AlertService(AlertRepository alertRepository, UserRepository userRepository, SimpMessagingTemplate messagingTemplate) {
         this.alertRepository = alertRepository;
@@ -28,7 +29,6 @@ public class AlertService {
         this.messagingTemplate = messagingTemplate;
     }
 
-    // 1. יצירת התראה חדשה
     public Alert createAlert(String username, String symbol, double targetPrice, AlertCondition condition) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -37,54 +37,47 @@ public class AlertService {
         return alertRepository.save(alert);
     }
 
-    // 2. בדיקת התראות (הפונקציה שתרוץ בכל עדכון מחיר)
     @Transactional
     public void checkAlerts(Asset asset) {
-        // שולפים רק התראות פעילות למניה הספציפית הזו
+        // שימוש בשם המותאם IsTriggered
         List<Alert> activeAlerts = alertRepository.findBySymbolAndIsTriggeredFalse(asset.getSymbol());
 
         for (Alert alert : activeAlerts) {
             boolean isHit = false;
+            BigDecimal current = asset.getCurrentPrice();
+            BigDecimal target = alert.getTargetPrice();
 
-            // בדיקה: האם עברנו את המחיר?
-            if (alert.getCondition() == AlertCondition.ABOVE) {
-                // אם המחיר הנוכחי >= מחיר היעד
-                if (asset.getCurrentPrice().compareTo(alert.getTargetPrice()) >= 0) {
-                    isHit = true;
-                }
-            } else if (alert.getCondition() == AlertCondition.BELOW) {
-                // אם המחיר הנוכחי <= מחיר היעד
-                if (asset.getCurrentPrice().compareTo(alert.getTargetPrice()) <= 0) {
-                    isHit = true;
-                }
+            if (alert.getCondition() == AlertCondition.ABOVE && current.compareTo(target) >= 0) {
+                isHit = true;
+            } else if (alert.getCondition() == AlertCondition.BELOW && current.compareTo(target) <= 0) {
+                isHit = true;
             }
 
             if (isHit) {
-                triggerAlert(alert, asset.getCurrentPrice());
+                triggerAlert(alert, current);
             }
         }
     }
 
-    // 3. ביצוע ההתראה בפועל
     private void triggerAlert(Alert alert, BigDecimal currentPrice) {
-        alert.setTriggered(true);
+        alert.setTriggered(true); // Lombok יודע לייצר setTriggered גם לשדה isTriggered
+        alert.setTriggeredAt(LocalDateTime.now()); // השדה שהוספנו למודל
         alertRepository.save(alert);
 
         String message = "🔔 התראה: " + alert.getSymbol() + " הגיע ליעד ($" + currentPrice + ")";
 
-        System.out.println("Triggering alert for: " + alert.getUser().getUsername());
-
-        // יצירת אובייקט הודעה עם הנמען
         Map<String, String> notification = new HashMap<>();
         notification.put("username", alert.getUser().getUsername());
         notification.put("message", message);
 
-        // שליחה לערוץ הציבורי (הלקוח יסנן לבד)
         messagingTemplate.convertAndSend("/topic/alerts", notification);
     }
 
-    // שליפת התראות של משתמש (להצגה ב-UI)
     public List<Alert> getUserAlerts(String username) {
-        return alertRepository.findByUserUsername(username);
+        return alertRepository.findByUserUsernameAndIsTriggeredFalse(username);
+    }
+
+    public void deleteAlert(Long id) {
+        alertRepository.deleteById(id);
     }
 }
