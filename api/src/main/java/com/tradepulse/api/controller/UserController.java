@@ -1,11 +1,15 @@
 package com.tradepulse.api.controller;
 
-import com.tradepulse.api.model.Asset;
+import com.tradepulse.api.model.PortfolioItem;
+import com.tradepulse.api.model.Transaction;
 import com.tradepulse.api.model.User;
-import com.tradepulse.api.repository.AssetRepository;
+import com.tradepulse.api.repository.TransactionRepository;
 import com.tradepulse.api.repository.UserRepository;
+import com.tradepulse.api.service.PortfolioService;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Set;
 
 @RestController
@@ -13,44 +17,48 @@ import java.util.Set;
 public class UserController {
 
     private final UserRepository userRepository;
-    private final AssetRepository assetRepository;
+    private final PortfolioService portfolioService;
+    private final TransactionRepository transactionRepository; // <--- 1. שדה חדש
 
-    public UserController(UserRepository userRepository, AssetRepository assetRepository) {
+    // 2. עדכון הבנאי (הוספת TransactionRepository)
+    public UserController(UserRepository userRepository,
+                          PortfolioService portfolioService,
+                          TransactionRepository transactionRepository) {
         this.userRepository = userRepository;
-        this.assetRepository = assetRepository;
+        this.portfolioService = portfolioService;
+        this.transactionRepository = transactionRepository;
     }
 
-    // 1. יצירת משתמש חדש
-    // POST /api/users
-    @PostMapping
-    public User createUser(@RequestBody User user) {
-        return userRepository.save(user);
-    }
-
-    // 2. הוספת מניה לתיק של משתמש
-    // POST /api/users/{username}/portfolio/{symbol}
-    @PostMapping("/{username}/portfolio/{symbol}")
-    public User addAssetToPortfolio(@PathVariable String username, @PathVariable String symbol) {
-        // חיפוש המשתמש
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found: " + username));
-
-        // חיפוש המניה (חייבת להיות קיימת במערכת קודם!)
-        Asset asset = assetRepository.findById(symbol)
-                .orElseThrow(() -> new RuntimeException("Asset not found: " + symbol));
-
-        // הוספה לתיק ושמירה
-        user.getPortfolio().add(asset);
-        return userRepository.save(user);
-    }
-
-    // 3. קבלת התיק האישי
-    // GET /api/users/{username}/portfolio
-    @GetMapping("/{username}/portfolio")
-    public Set<Asset> getUserPortfolio(@PathVariable String username) {
+    // שליפת הפורטפוליו
+    @GetMapping("/portfolio")
+    public Set<PortfolioItem> getMyPortfolio() {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+        return user.getPortfolioItems();
+    }
 
-        return user.getPortfolio();
+    // הוספת קנייה (Trade)
+    @PostMapping("/trade")
+    public PortfolioItem addTrade(
+            @RequestParam String symbol,
+            @RequestParam int qty,
+            @RequestParam double price) {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        return portfolioService.addTransaction(username, symbol, qty, price);
+    }
+
+    // הוספה למעקב (Watchlist)
+    @PostMapping("/watchlist/{symbol}")
+    public PortfolioItem addToWatchlist(@PathVariable String symbol) {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        return portfolioService.addToWatchlist(username, symbol);
+    }
+
+    // --- 3. Endpoint חדש להיסטוריה ---
+    @GetMapping("/history")
+    public List<Transaction> getHistory() {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        return transactionRepository.findByUserUsernameOrderByTimestampDesc(username);
     }
 }

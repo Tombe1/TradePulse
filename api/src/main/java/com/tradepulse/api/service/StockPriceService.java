@@ -1,8 +1,9 @@
 package com.tradepulse.api.service;
 
 import com.tradepulse.api.model.QuoteResponse;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -14,7 +15,14 @@ public class StockPriceService {
     private final RestClient restClient;
     private final String apiKey;
 
-    // הזרקת הנתונים מקובץ ה-application.yml
+    // --- 1. DTO פנימי להחזקת שני המחירים ---
+    @Data
+    @AllArgsConstructor
+    public static class StockQuote {
+        private BigDecimal current;
+        private BigDecimal previousClose;
+    }
+
     public StockPriceService(@Value("${finnhub.api.url}") String baseUrl,
                              @Value("${finnhub.api.key}") String apiKey) {
         this.restClient = RestClient.builder()
@@ -23,8 +31,10 @@ public class StockPriceService {
         this.apiKey = apiKey;
     }
 
-    @Cacheable(value = "stock_prices", key = "#symbol")
-    public BigDecimal fetchPrice(String symbol) {
+    // --- 2. עדכון הפונקציה להחזרת האובייקט החדש ---
+    // (ביטלתי את ה-Cache לרגע כי שומרים אובייקט מורכב, אם תרצה אפשר להחזיר)
+    // @Cacheable(value = "stock_prices", key = "#symbol")
+    public StockQuote fetchQuote(String symbol) {
 
         System.out.println("--- 🌍 Calling External API for " + symbol + " ---");
 
@@ -39,7 +49,15 @@ public class StockPriceService {
                 .body(QuoteResponse.class);
 
         if (response != null && response.getCurrentPrice() != null) {
-            return response.getCurrentPrice();
+            BigDecimal current = response.getCurrentPrice();
+
+            // שליפת מחיר הסגירה הקודם (אם אין - נשתמש בנוכחי כברירת מחדל)
+            BigDecimal prev = response.getPreviousClosePrice();
+            if (prev == null) {
+                prev = current;
+            }
+
+            return new StockQuote(current, prev);
         }
 
         throw new RuntimeException("Failed to fetch price for " + symbol);
